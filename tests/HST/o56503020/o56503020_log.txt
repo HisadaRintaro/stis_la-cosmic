@@ -1,0 +1,135 @@
+2025127204101-I-INFO gc_GenericConversion:  -------------- Generic Conversion Started: o56503020 ------------
+2025127204101-I-INFO GCO_STIS: Starting...
+2025127204101-I-INFO GCO_poll_status: ===================================================================
+2025127204101-I-INFO GCO_poll_status: -------------- Generic Conversion Processing: o56503020 ------------- 
+2025127204101-I-INFO -------------- Generic Conversion Started: o56503020:o56503qsq -------------
+2017278182030-I-INFO -------------- Data Partitioning Started: o56503qsq ------------
+2017278182030-I-INFO Partitioning from POD file: lz_499e_121_0000253703
+2017278182030-I-INFO OSF_PROCESSING: for o56503qsq
+2017278182030-I-INFO DP_dan_present:  No DAN file found: ...lz_499e_121_0000253703.dan
+2017278182030-I-INFO PODNAMES will not be updated due to missing DAN file
+2017278182030-I-INFO DPI_task::DP_close_oldobs:  SDF lines = 1149, expected pkts = 1150 (single readout), total pkts = 1150
+2017278182030-I-INFO DPI_task::DP_close_oldobs:  1149 Science packets, 1 Engineering (ULX) packets, 0 Bad pkts
+2017278182030-I-INFO DP_close_files:  ...o56503qsq.pkx was closed
+2017278182030-I-INFO DP_close_files:  ...o56503qsq.bdx was closed
+2017278182030-I-INFO DP_close_files:  ...o56503qsq.ulx was closed
+2017278182030-I-INFO DP_close_files:  ...o56503qsq.pki was closed
+2017278182030-I-INFO DP_close_files:  ...o56503qsq.uli was closed
+2017278182030-I-INFO DPI_task::DP_close_oldobs:  Copied ...o56503qtq.shx to ...o56503qsq.shx
+2017278182030-I-INFO DPI_task::DP_close_oldobs:  -------------- Data Partitioning Ended:   o56503qsq ------------
+2025127204057-I-INFO ss_SupportSchedule:  -------------- Support Schedule Started: o56503qsq ------------
+2025127204058-I-INFO ss_SupportSchedule:  -------------- Support Schedule Completed: o56503qsq ------------
+2025127204100-I-INFO dv_DataValidation:  -------------- Data Validation Started: o56503qsq ------------
+2025127204100-I-INFO dv_Instrument::assign_first_key: from qolink_sms.start_time= 2000.266:03:28:04
+2025127204100-I-INFO dv_Instrument::assign_first_key: assigned first_keys for 2000.266:03:28:04 using yurintab date: 1990.001:00:00:00
+2025127204100-I-INFO dv_STIS::DV_check_ssgain:  DV mismatch: SS_GAIN = 0, CCDGAINn = 4
+2025127204100-I-INFO dv_STIS::compare:  Mismatched weight (10) was lower than threshold (55)
+2025127204100-I-INFO dv_DataValidation:  -------------- Data Validation Completed: o56503qsq ------------
+2025127204101-I-INFO ----------- World Coordinate System Started: o56503qsq ---------
+2025127204101-I-INFO ----------- World Coordinate System Ended:   o56503qsq ---------
+2025127204101-I-INFO GC_load_...s: ...o56503qsq.dvx maxgroup=1
+2025127204101-I-INFO GC_load_...s: ...o56503qsq.dgx maxgroup=0
+2025127204101-I-INFO GC_load_...s: ...o56503qsq.dcx maxgroup=1
+2025127204101-I-INFO GCO_init_obs: o56503qsq is a WAVECAL
+2025127204101-I-INFO -------------- Generic Conversion Completed: o56503qsq -------------
+2025127204101-I-INFO -------------- Generic Conversion Started: o56503020:o56503quq -------------
+2017110042832-I-INFO -------------- Data Partitioning Started: o56503quq ------------
+2017110042832-I-INFO Partitioning from POD file: lz_499f_119_0000253707
+2017110042832-I-INFO OSF_PROCESSING: for o56503quq
+2017110042832-I-INFO DP_dan_present:  No DAN file found: ...lz_499f_119_0000253707.dan
+2017110042832-I-INFO PODNAMES will not be updated due to missing DAN file
+2017110042832-I-INFO DPI_task::DP_close_oldobs:  SDF lines = 571, expected pkts = 572 (single readout), total pkts = 572
+2017110042832-I-INFO DPI_task::DP_close_oldobs:  571 Science packets, 1 Engineering (ULX) packets, 0 Bad pkts
+2017110042832-I-INFO DP_close_files:  ...o56503quq.pkx was closed
+2017110042832-I-INFO DP_close_files:  ...o56503quq.bdx was closed
+2017110042832-I-INFO DP_close_files:  ...o56503quq.ulx was closed
+2017110042832-I-INFO DP_close_files:  ...o56503quq.pki was closed
+2017110042832-I-INFO DP_close_files:  ...o56503quq.uli was closed
+2017110042832-I-INFO DPI_task::DP_close_oldobs:  Copied ...o56503qwq.shx to ...o56503quq.shx
+2017110042832-I-INFO DPI_task::DP_close_oldobs:  -------------- Data Partitioning Ended:   o56503quq ------------
+2025127204058-I-INFO ss_SupportSchedule:  -------------- Support Schedule Started: o56503quq ------------
+2025127204059-I-INFO ss_SupportSchedule:  -------------- Support Schedule Completed: o56503quq ------------
+2025127204100-I-INFO dv_DataValidation:  -------------- Data Validation Started: o56503quq ------------
+2025127204100-I-INFO dv_Instrument::assign_first_key: from qolink_sms.start_time= 2000.266:04:15:19
+2025127204100-I-INFO dv_Instrument::assign_first_key: assigned first_keys for 2000.266:04:15:19 using yurintab date: 1990.001:00:00:00
+2025127204101-I-INFO dv_STIS::DV_check_ssgain:  DV mismatch: SS_GAIN = 0, CCDGAINn = 1
+2025127204101-I-INFO dv_STIS::compare:  Mismatched weight (10) was lower than threshold (55)
+2025127204101-I-INFO dv_DataValidation:  -------------- Data Validation Completed: o56503quq ------------
+2025127204101-I-INFO ----------- World Coordinate System Started: o56503quq ---------
+2025127204101-I-INFO ----------- World Coordinate System Ended:   o56503quq ---------
+2025127204101-I-INFO GC_load_...s: ...o56503quq.dvx maxgroup=1
+2025127204101-I-INFO GC_load_...s: ...o56503quq.dgx maxgroup=0
+2025127204101-I-INFO GC_load_...s: ...o56503quq.dcx maxgroup=1
+2025127204102-I-INFO -------------- Generic Conversion Completed: o56503quq -------------
+2025127204102-I-INFO -------------- Generic Conversion Started: o56503020:o56503qvq -------------
+2017278164540-I-INFO -------------- Data Partitioning Started: o56503qvq ------------
+2017278164540-I-INFO Partitioning from POD file: lz_49a0_119_0000253737
+2017278164540-I-INFO OSF_PROCESSING: for o56503qvq
+2017278164540-I-INFO DP_dan_present:  No DAN file found: ...lz_49a0_119_0000253737.dan
+2017278164540-I-INFO PODNAMES will not be updated due to missing DAN file
+2017278164540-I-INFO DPI_task::DP_close_oldobs:  SDF lines = 571, expected pkts = 572 (single readout), total pkts = 572
+2017278164540-I-INFO DPI_task::DP_close_oldobs:  571 Science packets, 1 Engineering (ULX) packets, 0 Bad pkts
+2017278164540-I-INFO DP_close_files:  ...o56503qvq.pkx was closed
+2017278164540-I-INFO DP_close_files:  ...o56503qvq.bdx was closed
+2017278164540-I-INFO DP_close_files:  ...o56503qvq.ulx was closed
+2017278164540-I-INFO DP_close_files:  ...o56503qvq.pki was closed
+2017278164540-I-INFO DP_close_files:  ...o56503qvq.uli was closed
+2017278164540-I-INFO DPI_task::DP_close_oldobs:  Copied ...o56503qyq.shx to ...o56503qvq.shx
+2017278164540-I-INFO DPI_task::DP_close_oldobs:  -------------- Data Partitioning Ended:   o56503qvq ------------
+2025127204059-I-INFO ss_SupportSchedule:  -------------- Support Schedule Started: o56503qvq ------------
+2025127204059-I-INFO ss_SupportSchedule:  -------------- Support Schedule Completed: o56503qvq ------------
+2025127204101-I-INFO dv_DataValidation:  -------------- Data Validation Started: o56503qvq ------------
+2025127204101-I-INFO dv_Instrument::assign_first_key: from qolink_sms.start_time= 2000.266:04:36:24
+2025127204101-I-INFO dv_Instrument::assign_first_key: assigned first_keys for 2000.266:04:36:24 using yurintab date: 1990.001:00:00:00
+2025127204101-I-INFO dv_STIS::DV_check_ssgain:  DV mismatch: SS_GAIN = 0, CCDGAINn = 1
+2025127204101-I-INFO dv_STIS::compare:  Mismatched weight (10) was lower than threshold (55)
+2025127204101-I-INFO dv_DataValidation:  -------------- Data Validation Completed: o56503qvq ------------
+2025127204101-I-INFO ----------- World Coordinate System Started: o56503qvq ---------
+2025127204101-I-INFO ----------- World Coordinate System Ended:   o56503qvq ---------
+2025127204102-I-INFO GC_load_...s: ...o56503qvq.dvx maxgroup=1
+2025127204102-I-INFO GC_load_...s: ...o56503qvq.dgx maxgroup=0
+2025127204102-I-INFO GC_load_...s: ...o56503qvq.dcx maxgroup=1
+2025127204102-I-INFO -------------- Generic Conversion Completed: o56503qvq -------------
+2025127204102-I-INFO -------------- Generic Conversion Started: o56503020:o56503qxq -------------
+2017278164540-I-INFO -------------- Data Partitioning Started: o56503qxq ------------
+2017278164540-I-INFO Partitioning from POD file: lz_49a0_119_0000253737
+2017278164540-I-INFO OSF_PROCESSING: for o56503qxq
+2017278164540-I-INFO DP_dan_present:  No DAN file found: ...lz_49a0_119_0000253737.dan
+2017278164540-I-INFO PODNAMES will not be updated due to missing DAN file
+2017278164540-I-INFO DPI_task::DP_close_oldobs:  SDF lines = 1149, expected pkts = 1150 (single readout), total pkts = 1150
+2017278164540-I-INFO DPI_task::DP_close_oldobs:  1149 Science packets, 1 Engineering (ULX) packets, 0 Bad pkts
+2017278164540-I-INFO DP_close_files:  ...o56503qxq.pkx was closed
+2017278164540-I-INFO DP_close_files:  ...o56503qxq.bdx was closed
+2017278164540-I-INFO DP_close_files:  ...o56503qxq.ulx was closed
+2017278164540-I-INFO DP_close_files:  ...o56503qxq.pki was closed
+2017278164540-I-INFO DP_close_files:  ...o56503qxq.uli was closed
+2017278164540-I-INFO DPI_task::DP_close_oldobs:  Copied ...o56503qyq.shx to ...o56503qxq.shx
+2017278164540-I-INFO DPI_task::DP_close_oldobs:  -------------- Data Partitioning Ended:   o56503qxq ------------
+2025127204059-I-INFO ss_SupportSchedule:  -------------- Support Schedule Started: o56503qxq ------------
+2025127204100-I-INFO ss_SupportSchedule:  -------------- Support Schedule Completed: o56503qxq ------------
+2025127204101-I-INFO dv_DataValidation:  -------------- Data Validation Started: o56503qxq ------------
+2025127204101-I-INFO dv_Instrument::assign_first_key: from qolink_sms.start_time= 2000.266:05:04:09
+2025127204101-I-INFO dv_Instrument::assign_first_key: assigned first_keys for 2000.266:05:04:09 using yurintab date: 1990.001:00:00:00
+2025127204101-I-INFO dv_STIS::DV_check_ssgain:  DV mismatch: SS_GAIN = 0, CCDGAINn = 4
+2025127204101-I-INFO dv_STIS::compare:  Mismatched weight (10) was lower than threshold (55)
+2025127204101-I-INFO dv_DataValidation:  -------------- Data Validation Completed: o56503qxq ------------
+2025127204101-I-INFO ----------- World Coordinate System Started: o56503qxq ---------
+2025127204101-I-INFO ----------- World Coordinate System Ended:   o56503qxq ---------
+2025127204102-I-INFO GC_load_...s: ...o56503qxq.dvx maxgroup=1
+2025127204102-I-INFO GC_load_...s: ...o56503qxq.dgx maxgroup=0
+2025127204102-I-INFO GC_load_...s: ...o56503qxq.dcx maxgroup=1
+2025127204102-I-INFO GCO_init_obs: o56503qxq is a WAVECAL
+2025127204102-I-INFO -------------- Generic Conversion Completed: o56503qxq -------------
+2025127204102-I-INFO GCO_STIS: -------------- Generic Conversion Completed: o56503020 ------------- 
+2025127204102-I-INFO gc_GenericConversion:  -------------- Generic Conversion Completed: o56503020 ------------
+2025127204105-I-INFO-exposure_times-Start ------ Exposure Times Updater for o56503020 ------
+2025127204105-I-INFO-exposure_times-UPDATE_EXPOSURE_TIMES is False. No update necessary.
+2025127204105-I-INFO-exposure_times-  End ------ Exposure Times Updater Nothing to do for o56503020 ------
+2025128214404 INFO src=ac_xxx_OWL.run_task fsn=o56503020 msg="-------------- After Calibration Started for   o56503020 --------------"
+2025128214404 INFO src=ac_xxx_OWL-hst_missionquery.__init__ msg="HST_Mission_db connection to ... ..."
+2025128214404 INFO src=ac_xxx_OWL-HstScienceDataset.__init__ fsn=o56503020 msg="Opening connection to ..., ..."
+2025128214404 INFO src=ac_xxx_OWL-HstScienceDataset.determine_members fsn=o56503020 msg="5 rows found for association o56503020"
+2025128214404 INFO src=ac_xxx_OWL-hst_missionquery.get_proposal_id fsn=o56503qsq msg="returning 07353 for o56503qsq"
+2025128214404 INFO src=ac_xxx_OWL.update_s_region_from_raw fsn=o56503020 msg="S_REGION ... updated for ...o56503020_sx1.fits"
+2025128214404 INFO src=ac_xxx_OWL.update_quality_...s fsn=o56503020 msg="Successfully updated QUAL* ...s for o56503020"
+2025128214404 INFO src=ac_xxx_OWL.run_task fsn=o56503020 msg="-------------- After Calibration Completed for o56503020 --------------"

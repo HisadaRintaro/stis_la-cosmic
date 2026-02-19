@@ -1,0 +1,22 @@
+[project]
+name = "stis-la-cosmic"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "HisadaRintaro",email = "rintro204@icloud.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "astropy (>=7.2.0,<8.0.0)",
+    "ipython (>=9.10.0,<10.0.0)",
+    "lacosmic (>=1.4.0,<2.0.0)",
+    "matplotlib (>=3.10.8,<4.0.0)"
+]
+
+[tool.poetry]
+packages = [{include = "stis_la_cosmic", from = "src"}]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
