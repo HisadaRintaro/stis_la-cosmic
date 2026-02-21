@@ -128,7 +128,7 @@ class ImageModel:
         contrast: float = 5.0,
         cr_threshold: float = 5,
         neighbor_threshold: float = 5,
-        error: float = 5,
+        error: float | None = None,
         mask_negative: bool = True,
         **kwargs
     ) -> tuple[Self, Self]:
@@ -145,7 +145,7 @@ class ImageModel:
             宇宙線検出のシグマクリッピング閾値（デフォルト: 5）
         neighbor_threshold : float, optional
             近傍ピクセルの検出閾値（デフォルト: 5）
-        error : float, optional
+        error : float | None, optional
             誤差配列のスケール係数（デフォルト: 5）
         mask_negative : bool, optional
             True の場合、負の値を持つピクセルもマスク対象にする（デフォルト: True）
@@ -178,7 +178,7 @@ class ImageModel:
             contrast,
             cr_threshold,
             neighbor_threshold,
-            error= error*np.ones(self.shape),
+            error= error*np.ones(self.shape) if error is not None else None,
             mask=combined_mask,
             **kwargs
         )
@@ -259,11 +259,12 @@ class ImageModel:
         # パターン: keyword=='' かつ直前カードが非空白 = セクション末尾区切り
         section_end = None
         in_cal_section = False
-        for i, card in enumerate(header.cards):
+        cards = list(header.cards)
+        for i, card in enumerate(cards):
             if card.keyword == '' and 'CALIBRATION SWITCHES' in card.comment:
                 in_cal_section = True
                 continue
-            if in_cal_section and card.keyword == '' and header.cards[i - 1].keyword != '':
+            if in_cal_section and card.keyword == '' and cards[i - 1].keyword != '':
                 section_end = i
                 break
 
@@ -272,6 +273,8 @@ class ImageModel:
             header.insert(section_end, lacorr_card)
         else:
             header.append(lacorr_card)
+
+        header.add_history('LA-Cosmic cosmic ray rejection applied (stis_la_cosmic)')
         return header
 
     def write_fits(
@@ -400,6 +403,9 @@ class ImageCollection:
     neighbor_threshold : float = 5
     error : float = 5
 
+
+    def __repr__(self) -> str:
+        return f"ImageCollection({len(self.images)} images, contrast={self.contrast}, cr_threshold={self.cr_threshold}, neighbor_threshold={self.neighbor_threshold}, error={self.error})"
 
     @classmethod
     def from_readers(
