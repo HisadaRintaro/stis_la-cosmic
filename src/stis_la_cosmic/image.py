@@ -23,41 +23,50 @@ class ImageModel:
 
     Attributes
     ----------
-    image : np.ndarray
-        2次元の科学画像データ配列
-    header : fits.Header
-        対応する FITS ヘッダー（HDU 1）
-    source_path : Path | None
-        元の FITS ファイルが格納されているディレクトリパス
     primary_header : fits.Header | None
-        元の FITS ファイルの Primary Header（HDU 0）
+        Primary Header（HDU 0）。None の場合は元ファイルに Primary HDU が存在しない
+    header : fits.Header
+        科学画像（SCI）ヘッダー（HDU 1）
+    image : np.ndarray
+        科学画像（SCI）データ配列（HDU 1）
+    error_data : np.ndarray | None
+        誤差（ERR）データ配列（HDU 2）。None の場合は元ファイルに ERR HDU が存在しない
+    error_header : fits.Header | None
+        誤差（ERR）ヘッダー（HDU 2）。None の場合は元ファイルに ERR HDU が存在しない
+    data_quality : np.ndarray | None
+        DQ データ配列（HDU 3）。None の場合は元ファイルに DQ HDU が存在しない
+    dq_header : fits.Header | None
+        DQ ヘッダー（HDU 3）。None の場合は元ファイルに DQ HDU が存在しない
     mask : np.ndarray | None
         DQ フラグから生成された bad pixel マスク（True = bad pixel）
-    error_data : np.ndarray | None
-        ERR 配列（HDU 2）。None の場合は元ファイルに ERR HDU が存在しない
-    data_quality : np.ndarray | None
-        DQ 配列（HDU 3）。None の場合は元ファイルに DQ HDU が存在しない
+    source_path : Path | None
+        元の FITS ファイルが格納されているディレクトリパス
+    dq_flags : int
+        マスク対象の DQ ビットフラグ（デフォルト: 16 = hot pixel）
     """
 
-    image : np.ndarray
+    primary_header : fits.Header
     header : fits.Header
-    source_path : Path | None = None
-    primary_header : fits.Header | None = None
-    mask : np.ndarray | None = None
-    dq_flags : int = 16
+    image : np.ndarray
     error_data : np.ndarray | None = None
+    error_header : fits.Header | None = None
     data_quality : np.ndarray | None = None
+    dq_header : fits.Header | None = None
+    mask : np.ndarray | None = None
+    source_path : Path | None = None
+    dq_flags : int = 16
 
     def __repr__(self) -> str:
         mask_info = f"mask_count={self.mask.sum()}" if self.mask is not None else "mask=None"
         return (
-            f"ImageModel(image={self.image.shape}, \n "
-            +f"header={type(self.header).__name__}),\n"
-            +f"source_path={self.source_path}, \n"
-            +f"primary_header={self.primary_header is not None}, \n"
-            +f"{mask_info}, \n"
-            +f"error_data={self.error_data is not None}, \n"
-            +f"data_quality={self.data_quality is not None})\n"
+            f"ImageModel(\n"
+            f"  image={self.image.shape},\n"
+            f"  error_data={self.error_data is not None},\n"
+            f"  data_quality={self.data_quality is not None},\n"
+            f"  {mask_info},\n"
+            f"  source_path={self.source_path}\n"
+            f"  dq_flags={self.dq_flags}\n"
+            f")"
         )
 
     @classmethod
@@ -83,22 +92,28 @@ class ImageModel:
         """
         try:
             error_data = reader.image_data(2)
+            error_header = reader.header(2)
         except KeyError:
             error_data = None
+            error_header = None
         try:
             dq = reader.image_data(3)
+            dq_header = reader.header(3)
         except KeyError:
             dq = None
+            dq_header = None
         mask = (dq & dq_flags).astype(bool) if dq is not None else None
         return cls(
-            image=reader.image_data(1),
-            header=reader.header(1),
-            source_path=reader.filename.parent,
             primary_header=reader.header(0),
-            mask=mask,
-            dq_flags=dq_flags,
+            header=reader.header(1),
+            image=reader.image_data(1),
             error_data=error_data,
+            error_header=error_header,
             data_quality=dq,
+            dq_header=dq_header,
+            mask=mask,
+            source_path=reader.filename.parent,
+            dq_flags=dq_flags,
         )
 
     @staticmethod
@@ -331,9 +346,9 @@ class ImageModel:
         image_hdu = fits.ImageHDU(data=self.image, header=self.header)
         hdu_list = [primary_hdu, image_hdu]
         if self.error_data is not None:
-            hdu_list.append(fits.ImageHDU(data=self.error_data))
+            hdu_list.append(fits.ImageHDU(data=self.error_data, header=self.error_header))
         if self.data_quality is not None:
-            hdu_list.append(fits.ImageHDU(data=self.data_quality))
+            hdu_list.append(fits.ImageHDU(data=self.data_quality, header=self.dq_header))
         fits.HDUList(hdu_list).writeto(output_path, overwrite=overwrite)
         return output_path
 
