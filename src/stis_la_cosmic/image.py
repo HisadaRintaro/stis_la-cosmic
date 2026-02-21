@@ -186,6 +186,94 @@ class ImageModel:
         mask_model = replace(self,image=mask)
         return clean_model, mask_model 
     
+    @staticmethod
+    def _resolve_output_path(
+        source_path: Path | None,
+        output_dir: Path | None,
+        filename: str,
+        output_suffix: str,
+        overwrite: bool,
+    ) -> Path:
+        """出力パスを決定し、上書き防止チェックを行う.
+
+        Parameters
+        ----------
+        source_path : Path | None
+            元ファイルのディレクトリパス
+        output_dir : Path | None
+            出力先ディレクトリ。None の場合は source_path を使用する
+        filename : str
+            ファイルのルートネーム（ROOTNAME）
+        output_suffix : str
+            出力ファイルの接尾辞
+        overwrite : bool
+            既存ファイルの上書きを許可するか
+
+        Returns
+        -------
+        Path
+            出力先のフルパス
+
+        Raises
+        ------
+        ValueError
+            source_path が未設定かつ output_dir も指定されていない場合
+        FileExistsError
+            出力ファイルが既に存在し overwrite=False の場合
+        """
+        dest_dir = output_dir or source_path
+        if dest_dir is None:
+            raise ValueError(
+                "出力先を決定できません。source_path が未設定のため、"
+                "output_dir を指定してください。"
+            )
+        output_path = dest_dir / f"{filename}{output_suffix}.fits"
+        if not overwrite and output_path.exists():
+            raise FileExistsError(
+                f"出力ファイルが既に存在します: {output_path}"
+            )
+        return output_path
+
+    @staticmethod
+    def _build_primary_header(
+        primary_header: fits.Header | None,
+    ) -> fits.Header:
+        """Primary Header を準備し LACORR キーワードを CAL SWITCHES 末尾に挿入する.
+
+        CALIBRATION SWITCHES セクションが存在する場合はその末尾、
+        存在しない場合はヘッダー末尾に LACORR カードを挿入する。
+
+        Parameters
+        ----------
+        primary_header : fits.Header | None
+            元の Primary Header。None の場合は空ヘッダーを新規作成する
+
+        Returns
+        -------
+        fits.Header
+            LACORR キーワードを追加済みの Primary Header
+        """
+        header = primary_header.copy() if primary_header is not None else fits.Header()
+
+        # CAL SWITCHES セクション末尾の空白カードインデックスを探す
+        # パターン: keyword=='' かつ直前カードが非空白 = セクション末尾区切り
+        section_end = None
+        in_cal_section = False
+        for i, card in enumerate(header.cards):
+            if card.keyword == '' and 'CALIBRATION SWITCHES' in card.comment:
+                in_cal_section = True
+                continue
+            if in_cal_section and card.keyword == '' and header.cards[i - 1].keyword != '':
+                section_end = i
+                break
+
+        lacorr_card = fits.Card('LACORR', True, 'LA-Cosmic correction applied')
+        if section_end is not None:
+            header.insert(section_end, lacorr_card)
+        else:
+            header.append(lacorr_card)
+        return header
+
     def write_fits(
         self,
         output_suffix: str = "_lac",
@@ -194,7 +282,7 @@ class ImageModel:
     ) -> Path:
         """宇宙線除去済み画像を FITS ファイルとして出力する.
 
-        PrimaryHDU に LA-Cosmic 処理のキーワードを追加し、
+        PrimaryHDU の CALIBRATION SWITCHES セクション末尾に LACORR キーワードを追加し、
         ImageHDU に処理済みデータを格納して書き出す。
 
         Parameters
@@ -218,39 +306,13 @@ class ImageModel:
         FileExistsError
             出力ファイルが既に存在し overwrite=False の場合
         """
-        # 出力先ディレクトリの決定
-        dest_dir = output_dir or self.source_path
-        if dest_dir is None:
-            raise ValueError(
-                "出力先を決定できません。source_path が未設定のため、"
-                "output_dir を指定してください。"
-            )
-
-        # 出力ファイル名の構築: ROOTNAME + suffix + .fits
-        output_filename = f"{self.filename}{output_suffix}.fits"
-        output_path = dest_dir / output_filename
-
-        # 上書き防止チェック
-        if not overwrite and output_path.exists():
-            raise FileExistsError(
-                f"出力ファイルが既に存在します: {output_path}"
-            )
-
-        # Primary Header の準備
-        if self.primary_header is not None:
-            primary_header = self.primary_header.copy()
-        else:
-            primary_header = fits.Header()
-
-        # LA-Cosmic 処理キーワードの追加
-        primary_header["LACORR"] = (True, "LA-Cosmic correction applied")
-
-        # HDUList の構築と出力
+        output_path = self._resolve_output_path(
+            self.source_path, output_dir, self.filename, output_suffix, overwrite
+        )
+        primary_header = self._build_primary_header(self.primary_header)
         primary_hdu = fits.PrimaryHDU(header=primary_header)
         image_hdu = fits.ImageHDU(data=self.image, header=self.header)
-        hdul = fits.HDUList([primary_hdu, image_hdu])
-        hdul.writeto(output_path, overwrite=overwrite)
-
+        fits.HDUList([primary_hdu, image_hdu]).writeto(output_path, overwrite=overwrite)
         return output_path
 
     def imshow(self,ax = None, **kwargs) -> plt.Axes: # pyright: ignore
