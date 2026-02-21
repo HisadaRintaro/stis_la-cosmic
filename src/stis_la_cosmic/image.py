@@ -33,6 +33,10 @@ class ImageModel:
         元の FITS ファイルの Primary Header（HDU 0）
     mask : np.ndarray | None
         DQ フラグから生成された bad pixel マスク（True = bad pixel）
+    error_data : np.ndarray | None
+        ERR 配列（HDU 2）。None の場合は元ファイルに ERR HDU が存在しない
+    data_quality : np.ndarray | None
+        DQ 配列（HDU 3）。None の場合は元ファイルに DQ HDU が存在しない
     """
 
     image : np.ndarray
@@ -41,17 +45,25 @@ class ImageModel:
     primary_header : fits.Header | None = None
     mask : np.ndarray | None = None
     dq_flags : int = 16
+    error_data : np.ndarray | None = None
+    data_quality : np.ndarray | None = None
 
     def __repr__(self) -> str:
         mask_info = f"mask_count={self.mask.sum()}" if self.mask is not None else "mask=None"
-        return f"ImageModel(image={self.image.shape}, header={type(self.header).__name__}), source_path={self.source_path}, primary_header={self.primary_header is not None}, {mask_info}"
+        return (
+            f"ImageModel(image={self.image.shape}, \n "
+            +f"header={type(self.header).__name__}),\n"
+            +f"source_path={self.source_path}, \n"
+            +f"primary_header={self.primary_header is not None}, \n"
+            +f"{mask_info}, \n"
+            +f"error_data={self.error_data is not None}, \n"
+            +f"data_quality={self.data_quality is not None})\n"
+        )
 
     @classmethod
     def from_reader(
         cls,
         reader: STISFitsReader,
-        index: int = 1,
-        dq_index: int = 3,
         dq_flags: int = 16,
     ) -> Self:
         """STISFitsReader から ImageModel を生成する.
@@ -60,10 +72,6 @@ class ImageModel:
         ----------
         reader : STISFitsReader
             読み込み済みの FITS Reader
-        index : int, optional
-            画像データの HDU インデックス（デフォルト: 1、科学データ）
-        dq_index : int, optional
-            DQ 配列の HDU インデックス（デフォルト: 3）
         dq_flags : int, optional
             マスク対象の DQ ビットフラグ（デフォルト: 16 = hot pixel）。
             複数フラグはビット OR で指定（例: 16 | 256）
@@ -74,17 +82,23 @@ class ImageModel:
             生成されたモデル
         """
         try:
-            dq = reader.image_data(dq_index)
+            error_data = reader.image_data(2)
+        except KeyError:
+            error_data = None
+        try:
+            dq = reader.image_data(3)
         except KeyError:
             dq = None
         mask = (dq & dq_flags).astype(bool) if dq is not None else None
         return cls(
-            image=reader.image_data(index),
-            header=reader.header(index),
+            image=reader.image_data(1),
+            header=reader.header(1),
             source_path=reader.filename.parent,
             primary_header=reader.header(0),
             mask=mask,
             dq_flags=dq_flags,
+            error_data=error_data,
+            data_quality=dq,
         )
 
     @staticmethod
@@ -315,7 +329,12 @@ class ImageModel:
         primary_header = self._build_primary_header(self.primary_header)
         primary_hdu = fits.PrimaryHDU(header=primary_header)
         image_hdu = fits.ImageHDU(data=self.image, header=self.header)
-        fits.HDUList([primary_hdu, image_hdu]).writeto(output_path, overwrite=overwrite)
+        hdu_list = [primary_hdu, image_hdu]
+        if self.error_data is not None:
+            hdu_list.append(fits.ImageHDU(data=self.error_data))
+        if self.data_quality is not None:
+            hdu_list.append(fits.ImageHDU(data=self.data_quality))
+        fits.HDUList(hdu_list).writeto(output_path, overwrite=overwrite)
         return output_path
 
     def imshow(self,ax = None, **kwargs) -> plt.Axes: # pyright: ignore
@@ -405,14 +424,18 @@ class ImageCollection:
 
 
     def __repr__(self) -> str:
-        return f"ImageCollection({len(self.images)} images, contrast={self.contrast}, cr_threshold={self.cr_threshold}, neighbor_threshold={self.neighbor_threshold}, error={self.error})"
+        return (
+            f"ImageCollection({len(self.images)} images, \n"
+            +f"contrast={self.contrast}, \n"
+            +f"cr_threshold={self.cr_threshold}, \n"
+            +f"neighbor_threshold={self.neighbor_threshold}, \n"
+            +f"error={self.error})\n"
+        )
 
     @classmethod
     def from_readers(
         cls,
         readers: ReaderCollection,
-        index: int = 1,
-        dq_index: int = 3,
         dq_flags: int = 16,
         contrast: float = 5.0,
         cr_threshold: float = 5,
@@ -428,10 +451,6 @@ class ImageCollection:
         ----------
         readers : ReaderCollection
             読み込み済みの FITS Reader コレクション
-        index : int, optional
-            画像データの HDU インデックス（デフォルト: 1、科学データ）
-        dq_index : int, optional
-            DQ 配列の HDU インデックス（デフォルト: 3）
         dq_flags : int, optional
             マスク対象の DQ ビットフラグ（デフォルト: 16 = hot pixel）。
             複数フラグはビット OR で指定（例: 16 | 256）
@@ -453,8 +472,6 @@ class ImageCollection:
         for reader in readers:
             image = ImageModel.from_reader(
                 reader,
-                index=index,
-                dq_index=dq_index,
                 dq_flags=dq_flags,
             )
             images.append(image)
@@ -635,7 +652,7 @@ class ImageCollection:
     def __len__(self) -> int:
         return len(self.images)
     
-    def __getitem__(self, index) -> ImageModel:
+    def __getitem__(self, index: int) -> ImageModel:
         return self.images[index]
     
     def __iter__(self):
