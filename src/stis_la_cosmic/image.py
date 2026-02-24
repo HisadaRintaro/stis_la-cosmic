@@ -4,6 +4,7 @@ STIS FITS ファイルから読み込んだ画像データを管理し、
 宇宙線除去 (LA-Cosmic) および可視化機能を提供するモジュール。
 """
 
+from typing import Literal
 import warnings
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -677,6 +678,16 @@ class ImageCollection:
             for image in self.images
         ]
 
+    @staticmethod
+    def save_fig(ax: np.ndarray, save_path: Path | str, title: str | None = None) -> None:
+        """Axes配列からFigureを取得し、タイトルを設定して画像を保存・クローズする."""
+        fig = ax.flat[0].figure
+        if title:
+            fig.suptitle(title)
+        fig.savefig(save_path)
+        print(f"saved {save_path}")
+        plt.close(fig)
+
     def imshow(
         self,
         ax=None,
@@ -686,6 +697,8 @@ class ImageCollection:
         x_center: int = 330,
         y_center: int = 550,
         half_width: int = 100,
+        save_path: Path | str | None = None,
+        title: str | None = None,
         **kwargs,
     ) -> plt.Axes:  # pyright: ignore
         """全画像をサブプロットのグリッドで一覧表示する.
@@ -709,6 +722,10 @@ class ImageCollection:
             表示範囲の中心 y 座標（デフォルト: 550）
         half_width : int, optional
             中心からの表示半幅（デフォルト: 100）
+        save_path : Path | str, optional
+            保存先のファイルパス（指定された場合、描画後に保存して Figure を閉じる）
+        title : str, optional
+            Figure全体のタイトル
         **kwargs
             matplotlib.axes.Axes.imshow に渡す追加キーワード引数
 
@@ -725,15 +742,22 @@ class ImageCollection:
             if area:
                 ax[i // 3, i % 3].set_xlim(x_center - half_width, x_center + half_width)
                 ax[i // 3, i % 3].set_ylim(y_center - half_width, y_center + half_width)
+                
+        if save_path:
+            self.save_fig(ax, save_path, title)
+            
         return ax
 
     def imshow_mask(
         self,
         ax=None,
+        mask_type: Literal["dq", "cr"] = "dq",
         area: bool = False,
         x_center: int = 330,
         y_center: int = 550,
         half_width: int = 100,
+        save_path: Path | str | None = None,
+        title: str | None = None,
         **kwargs,
     ) -> plt.Axes:  # pyright: ignore
         """全画像のマスクをサブプロットのグリッドで一覧表示する.
@@ -753,6 +777,10 @@ class ImageCollection:
             表示範囲の中心 y 座標（デフォルト: 550）
         half_width : int, optional
             中心からの表示半幅（デフォルト: 100）
+        save_path : Path | str, optional
+            保存先のファイルパス（指定された場合、描画後に保存して Figure を閉じる）
+        title : str, optional
+            Figure全体のタイトル
         **kwargs
             matplotlib.axes.Axes.imshow に渡す追加キーワード引数
 
@@ -761,19 +789,30 @@ class ImageCollection:
         np.ndarray of matplotlib.axes.Axes
             描画に使用した Axes 配列
         """
+        if mask_type not in ("dq", "cr"):
+            raise ValueError("mask_type must be 'dq' or 'cr'")
         if ax is None:
             _, ax = plt.subplots(2, 3, figsize=(10, 8))
         for i, image in enumerate(self.images):
-            mask_data = (
-                image.dq_mask.data
-                if image.dq_mask is not None
-                else np.zeros(image.shape, dtype=bool)
-            )
+            if mask_type == "dq":
+                mask_data = image.dq_mask
+                title_suffix = "DQ mask"
+            elif mask_type == "cr":
+                mask_data = (
+                    image.cr_mask.data
+                    if image.cr_mask is not None
+                    else np.zeros(image.shape, dtype=bool)
+                )
+                title_suffix = "CR mask"
             ax[i // 3, i % 3].imshow(mask_data, cmap="gray", **kwargs)
-            ax[i // 3, i % 3].set_title(f"{image.filename} (mask)")
+            ax[i // 3, i % 3].set_title(f"{image.filename} ({title_suffix})")
             if area:
                 ax[i // 3, i % 3].set_xlim(x_center - half_width, x_center + half_width)
                 ax[i // 3, i % 3].set_ylim(y_center - half_width, y_center + half_width)
+                
+        if save_path:
+            self.save_fig(ax, save_path, title)
+            
         return ax
 
     def __len__(self) -> int:
