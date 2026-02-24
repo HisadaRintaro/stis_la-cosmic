@@ -28,23 +28,23 @@ errors = [3,4,5]
 dq_flags = 16
 
 # after remove cosmic ray image saving
-for contrast in contrasts:
-    for cr_threshold in cr_thresholds:
-        for neighbor_threshold in neighbor_thresholds:
-            for error in errors:
-                print("implement contrast={contrast}, cr_threshold={cr_threshold}, neighbor_threshold={neighbor_threshold}, error{error}, dq_flags{dq_flags}")
-                image_collection = ImageCollection.from_readers(
-                    reader_collection,
-                    contrast=contrast,
-                    cr_threshold=cr_threshold,
-                    neighbor_threshold=neighbor_threshold,
-                    error=error,
-                    dq_flags=dq_flags,
-                )
-                removed_image_collection, mask_collection = image_collection.remove_cosmic_ray()
-                fig, ax = plt.subplots(2,3,figsize=(10,8))
-                removed_image_collection.imshow(area=True,ax=ax)
-                fig.suptitle(f"contrast={contrast}, cr_threshold={cr_threshold}, neighbor_threshold={neighbor_threshold}, error={error}, dq_flags={dq_flags}")
-                fig.savefig(save_dir / f"contrast={contrast}_cr_threshold={cr_threshold}_neighbor_threshold={neighbor_threshold}_error{error}_dq_flags{dq_flags}.png")
-                print("saved contrast={contrast}_cr_threshold={cr_threshold}_neighbor_threshold={neighbor_threshold}_error{error}_dq_flags{dq_flags}.png")
-                plt.close(fig)
+#for contrast in contrasts:
+#    for cr_threshold in cr_thresholds:
+#        for neighbor_threshold in neighbor_thresholds:
+#            for error in errors:
+#                print(f"implement contrast={contrast}, cr_threshold={cr_threshold}, neighbor_threshold={neighbor_threshold}, error{error}, dq_flags{dq_flags}")
+#                image_collection = ImageCollection.from_readers(
+#                    reader_collection,
+#                    contrast=contrast,
+#                    cr_threshold=cr_threshold,
+#                    neighbor_threshold=neighbor_threshold,
+#                    error=error,
+#                    dq_flags=dq_flags,
+#                )
+#                removed_image_collection, mask_collection = image_collection.remove_cosmic_ray()
+#                fig, ax = plt.subplots(2,3,figsize=(10,8))
+#                removed_image_collection.imshow(area=True,ax=ax)
+#                fig.suptitle(f"contrast={contrast}, cr_threshold={cr_threshold}, neighbor_threshold={neighbor_threshold}, error={error}, dq_flags={dq_flags}")
+#                fig.savefig(save_dir / f"contrast={contrast}_cr_threshold={cr_threshold}_neighbor_threshold={neighbor_threshold}_error{error}_dq_flags{dq_flags}.png")
+#                print(f"saved contrast={contrast}_cr_threshold={cr_threshold}_neighbor_threshold={neighbor_threshold}_error{error}_dq_flags{dq_flags}.png")
+#                plt.close(fig)

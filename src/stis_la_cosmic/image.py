@@ -4,7 +4,7 @@ STIS FITS ファイルから読み込んだ画像データを管理し、
 宇宙線除去 (LA-Cosmic) および可視化機能を提供するモジュール。
 """
 
-import PIL.BmpImagePlugin
+import warnings
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Self
@@ -14,56 +14,91 @@ from astropy.io import fits
 import matplotlib.pyplot as plt
 from lacosmic import remove_cosmics
 
+
+@dataclass(frozen=True)
+class ImageUnit:
+    """data と header のペア（astropy.io.fits.ImageHDU の型安全なラッパー）.
+
+    Attributes
+    ----------
+    data : np.ndarray
+        画像データ配列
+    header : fits.Header
+        対応するヘッダー
+    """
+
+    data: np.ndarray
+    header: fits.Header
+
+    def __repr__(self) -> str:
+        return f"ImageUnit(data={self.data.shape}, header={"fits.Header" if self.header else None})"
+
+    def to_hdu(self) -> fits.ImageHDU:
+        """fits.ImageHDU に変換する.
+
+        bool 型の data は FITS で扱えないため uint8 に変換する。
+
+        Returns
+        -------
+        fits.ImageHDU
+            data と header を格納した ImageHDU
+        """
+        data = self.data.astype(np.uint8) if self.data.dtype == bool else self.data
+        return fits.ImageHDU(data=data, header=self.header)
+
+
 @dataclass(frozen=True)
 class ImageModel:
     """STIS 画像データの単一フレームモデル.
 
-    1つの FITS HDU から取得した科学画像データとヘッダーを保持し、
-    宇宙線除去および画像表示の機能を提供する。
+    1つの FITS ファイルに対応する科学画像・誤差・DQ・マスクを
+    ImageUnit として保持し、宇宙線除去および画像表示の機能を提供する。
 
     Attributes
     ----------
-    primary_header : fits.Header | None
-        Primary Header（HDU 0）。None の場合は元ファイルに Primary HDU が存在しない
-    header : fits.Header
-        科学画像（SCI）ヘッダー（HDU 1）
-    image : np.ndarray
-        科学画像（SCI）データ配列（HDU 1）
-    error_data : np.ndarray | None
-        誤差（ERR）データ配列（HDU 2）。None の場合は元ファイルに ERR HDU が存在しない
-    error_header : fits.Header | None
-        誤差（ERR）ヘッダー（HDU 2）。None の場合は元ファイルに ERR HDU が存在しない
-    data_quality : np.ndarray | None
-        DQ データ配列（HDU 3）。None の場合は元ファイルに DQ HDU が存在しない
-    dq_header : fits.Header | None
-        DQ ヘッダー（HDU 3）。None の場合は元ファイルに DQ HDU が存在しない
-    mask : np.ndarray | None
-        DQ フラグから生成された bad pixel マスク（True = bad pixel）
+    primary_header : fits.Header
+        Primary Header（HDU 0）
+    sci : ImageUnit
+        科学画像（SCI, HDU 1）の data / header ペア
+    err : ImageUnit | None
+        誤差（ERR, HDU 2）の data / header ペア。None の場合は存在しない
+    dq : ImageUnit | None
+        DQ（HDU 3）の data / header ペア。None の場合は存在しない
+    mask : ImageUnit | None
+        bad pixel マスク（True = bad pixel）。LA-Cosmic 後 HDU に追加される
     source_path : Path | None
         元の FITS ファイルが格納されているディレクトリパス
     dq_flags : int
         マスク対象の DQ ビットフラグ（デフォルト: 16 = hot pixel）
     """
 
-    primary_header : fits.Header
-    header : fits.Header
-    image : np.ndarray
-    error_data : np.ndarray | None = None
-    error_header : fits.Header | None = None
-    data_quality : np.ndarray | None = None
-    dq_header : fits.Header | None = None
-    mask : np.ndarray | None = None
-    source_path : Path | None = None
-    dq_flags : int = 16
+    primary_header: fits.Header
+    sci: ImageUnit
+    err: ImageUnit | None = None
+    dq: ImageUnit | None = None
+    cr_mask: ImageUnit | None = None
+    source_path: Path | None = None
+    dq_flags: int = 16
+    dq_mask: np.ndarray | None = None
 
     def __repr__(self) -> str:
-        mask_info = f"mask_count={self.mask.sum()}" if self.mask is not None else "mask=None"
+        dq_mask_info = (
+            f"dq_mask_count={self.dq_mask.sum()}"
+            if self.dq_mask is not None
+            else "dq_mask=None"
+        )
+        cr_mask_info = (
+            f"cr_mask_count={self.cr_mask.data.sum()}"
+            if self.cr_mask is not None
+            else "cr_mask=None"
+        )
         return (
             f"ImageModel(\n"
-            f"  image={self.image.shape},\n"
-            f"  error_data={self.error_data is not None},\n"
-            f"  data_quality={self.data_quality is not None},\n"
-            f"  {mask_info},\n"
+            f"  sci={self.sci.data.shape},\n"
+            f"  err={self.err is not None},\n"
+            f"  dq={self.dq is not None},\n"
+            f"  {dq_mask_info},\n"
+            f"  {cr_mask_info},\n"
             f"  source_path={self.source_path}\n"
             f"  dq_flags={self.dq_flags}\n"
             f")"
@@ -91,27 +126,31 @@ class ImageModel:
             生成されたモデル
         """
         try:
-            error_data = reader.image_data(2)
-            error_header = reader.header(2)
+            err = ImageUnit(
+                data=reader.image_data(2),
+                header=reader.header(2),
+            )
         except KeyError:
-            error_data = None
-            error_header = None
+            err = None
         try:
-            dq = reader.image_data(3)
-            dq_header = reader.header(3)
+            dq_data = reader.image_data(3)
+            dq = ImageUnit(
+                data=dq_data,
+                header=reader.header(3),
+            )
+            dq_mask = (dq_data & dq_flags).astype(bool)
         except KeyError:
             dq = None
-            dq_header = None
-        mask = (dq & dq_flags).astype(bool) if dq is not None else None
+            dq_mask = None
         return cls(
             primary_header=reader.header(0),
-            header=reader.header(1),
-            image=reader.image_data(1),
-            error_data=error_data,
-            error_header=error_header,
-            data_quality=dq,
-            dq_header=dq_header,
-            mask=mask,
+            sci=ImageUnit(
+                data=reader.image_data(1),
+                header=reader.header(1),
+            ),
+            err=err,
+            dq=dq,
+            dq_mask=dq_mask,
             source_path=reader.filename.parent,
             dq_flags=dq_flags,
         )
@@ -157,14 +196,15 @@ class ImageModel:
         contrast: float = 5.0,
         cr_threshold: float = 5,
         neighbor_threshold: float = 5,
-        error: float | None = None,
+        error: float | None = 5,
         mask_negative: bool = True,
-        **kwargs
-    ) -> tuple[Self, Self]:
+        **kwargs,
+    ) -> Self:
         """LA-Cosmic アルゴリズムにより宇宙線を除去する.
 
         lacosmic.remove_cosmics を用いて画像データから宇宙線ヒットを
         検出・除去し、クリーン画像を持つ新しい ImageModel を返す。
+        宇宙線マスクは戻り値の .cr_mask 属性に格納される。
 
         Parameters
         ----------
@@ -184,37 +224,54 @@ class ImageModel:
         Returns
         -------
         ImageModel
-            宇宙線除去済み画像を持つ新しいインスタンス
+            宇宙線除去済み画像を持つ新しいインスタンス。
+            .cr_mask に宇宙線マスクが格納される
         """
         # 1. DQ マスクの取得
-        dq_mask = self.mask if self.mask is not None else np.zeros(self.shape, dtype=bool)
+        dq_mask = (
+            self.dq_mask
+            if self.dq_mask is not None
+            else np.zeros(self.shape, dtype=bool)
+        )
 
         # 2. Negative pixel マスクの生成
-        neg_mask = (self.image < 0) if mask_negative else np.zeros(self.shape, dtype=bool)
+        neg_mask = (
+            (self.sci.data < 0)
+            if mask_negative
+            else np.zeros(self.shape, dtype=bool)
+        )
 
         # 3. 合成マスク
         combined_mask = dq_mask | neg_mask
 
         # 4. マスク対象ピクセルを中央値補間
         if combined_mask.any():
-            interpolated = self.median_interpolate(self.image, combined_mask)
+            interpolated = self.median_interpolate(self.sci.data, combined_mask)
         else:
-            interpolated = self.image
+            interpolated = self.sci.data
 
         # 5. LA Cosmic 実行
-        clean_image, mask = remove_cosmics(
+        clean_data, cr_mask = remove_cosmics(
             interpolated,
             contrast,
             cr_threshold,
             neighbor_threshold,
-            error= error*np.ones(self.shape) if error is not None else None,
+            error=error * np.ones(self.shape) if error is not None else None,
             mask=combined_mask,
-            **kwargs
+            **kwargs,
         )
-        clean_model = replace(self,image=clean_image)
-        mask_model = replace(self,image=mask)
-        return clean_model, mask_model 
-    
+
+        # 6. 宇宙線マスク用の ImageUnit を生成（EXTNAME='LACOSMIC'）
+        cr_mask_header = fits.Header()
+        cr_mask_header["EXTNAME"] = "LACOSMIC"
+        cr_mask_unit = ImageUnit(data=cr_mask, header=cr_mask_header)
+
+        return replace(
+            self,
+            sci=replace(self.sci, data=clean_data),
+            cr_mask=cr_mask_unit,
+        )
+
     @staticmethod
     def _resolve_output_path(
         source_path: Path | None,
@@ -266,26 +323,32 @@ class ImageModel:
     @staticmethod
     def _build_primary_header(
         primary_header: fits.Header | None,
+        lacorr_applied: bool = True,
     ) -> fits.Header:
-        """Primary Header を準備し LACORR キーワードを CAL SWITCHES 末尾に挿入する.
+        """Primary Header を準備し、必要に応じて LACORR キーワードを挿入する.
 
-        CALIBRATION SWITCHES セクションが存在する場合はその末尾、
-        存在しない場合はヘッダー末尾に LACORR カードを挿入する。
+        lacorr_applied=True の場合は CALIBRATION SWITCHES セクション末尾に
+        LACORR カードと history を追加する。False の場合は追加しない。
 
         Parameters
         ----------
         primary_header : fits.Header | None
             元の Primary Header。None の場合は空ヘッダーを新規作成する
+        lacorr_applied : bool, optional
+            True の場合のみ LACORR=True キーワードと history を追加する
+            （デフォルト: True）
 
         Returns
         -------
         fits.Header
-            LACORR キーワードを追加済みの Primary Header
+            処理済みの Primary Header
         """
         header = primary_header.copy() if primary_header is not None else fits.Header()
 
+        if not lacorr_applied:
+            return header
+
         # CAL SWITCHES セクション末尾の空白カードインデックスを探す
-        # パターン: keyword=='' かつ直前カードが非空白 = セクション末尾区切り
         section_end = None
         in_cal_section = False
         cards = list(header.cards)
@@ -312,10 +375,11 @@ class ImageModel:
         output_dir: Path | None = None,
         overwrite: bool = False,
     ) -> Path:
-        """宇宙線除去済み画像を FITS ファイルとして出力する.
+        """画像を FITS ファイルとして出力する.
 
-        PrimaryHDU の CALIBRATION SWITCHES セクション末尾に LACORR キーワードを追加し、
-        ImageHDU に処理済みデータを格納して書き出す。
+        LA-Cosmic が適用済み（mask の EXTNAME が 'LACOSMIC'）の場合は
+        PrimaryHDU に LACORR=True キーワードと history を追加する。
+        未適用のまま '_lac' suffix で書き出そうとした場合は UserWarning を発行する。
 
         Parameters
         ----------
@@ -338,21 +402,38 @@ class ImageModel:
         FileExistsError
             出力ファイルが既に存在し overwrite=False の場合
         """
+        lacorr_applied = (
+            self.cr_mask is not None
+            and self.cr_mask.header.get("EXTNAME") == "LACOSMIC"
+        )
+        if not lacorr_applied and output_suffix == "_lac":
+            warnings.warn(
+                f"{self.filename}: LA-Cosmic が未適用ですが '"
+                f"{output_suffix}' suffix で書き出しています。"
+                " remove_cosmic_ray() を実行済みか確認してください。",
+                UserWarning,
+                stacklevel=2,
+            )
         output_path = self._resolve_output_path(
             self.source_path, output_dir, self.filename, output_suffix, overwrite
         )
-        primary_header = self._build_primary_header(self.primary_header)
-        primary_hdu = fits.PrimaryHDU(header=primary_header)
-        image_hdu = fits.ImageHDU(data=self.image, header=self.header)
-        hdu_list = [primary_hdu, image_hdu]
-        if self.error_data is not None:
-            hdu_list.append(fits.ImageHDU(data=self.error_data, header=self.error_header))
-        if self.data_quality is not None:
-            hdu_list.append(fits.ImageHDU(data=self.data_quality, header=self.dq_header))
+        primary_header = self._build_primary_header(
+            self.primary_header, lacorr_applied=lacorr_applied
+        )
+        hdu_list: list[fits.PrimaryHDU | fits.ImageHDU] = [
+            fits.PrimaryHDU(header=primary_header),
+            self.sci.to_hdu(),
+        ]
+        if self.err is not None:
+            hdu_list.append(self.err.to_hdu())
+        if self.dq is not None:
+            hdu_list.append(self.dq.to_hdu())
+        if self.cr_mask is not None:
+            hdu_list.append(self.cr_mask.to_hdu())
         fits.HDUList(hdu_list).writeto(output_path, overwrite=overwrite)
         return output_path
 
-    def imshow(self,ax = None, **kwargs) -> plt.Axes: # pyright: ignore
+    def imshow(self, ax=None, **kwargs) -> plt.Axes:  # pyright: ignore
         """画像データを matplotlib で表示する.
 
         Parameters
@@ -368,15 +449,15 @@ class ImageModel:
             描画に使用した Axes オブジェクト
         """
         if ax is None:
-            _,ax = plt.subplots()
-        ax.imshow(self.image,**kwargs)
+            _, ax = plt.subplots()
+        ax.imshow(self.sci.data, **kwargs)
         return ax
 
     def imshow_mask(self, ax=None, **kwargs) -> plt.Axes:  # pyright: ignore
-        """マスク画像を matplotlib で表示する.
+        """DQ マスク画像を matplotlib で表示する.
 
-        DQ フラグから生成された bad pixel マスクを可視化する。
-        マスクが設定されていない場合は全ゼロの画像を表示する。
+        DQ フラグから生成された bad pixel マスク（dq_mask）を可視化する。
+        dq_mask が設定されていない場合は全ゼロの画像を表示する。
 
         Parameters
         ----------
@@ -392,23 +473,56 @@ class ImageModel:
         """
         if ax is None:
             _, ax = plt.subplots()
-        mask_data = self.mask if self.mask is not None else np.zeros(self.shape, dtype=bool)
+        mask_data = (
+            self.dq_mask.data
+            if self.dq_mask is not None
+            else np.zeros(self.shape, dtype=bool)
+        )
         ax.imshow(mask_data, cmap="gray", **kwargs)
         ax.set_title(f"{self.filename} (DQ Flag = {self.dq_flags})")
         return ax
-    
+
+    def imshow_cr_mask(self, ax=None, **kwargs) -> plt.Axes:  # pyright: ignore
+        """LA-Cosmic マスク画像を matplotlib で表示する.
+
+        remove_cosmic_ray() 後の宇宙線マスク（cr_mask）を可視化する。
+        cr_mask が設定されていない場合は全ゼロの画像を表示する。
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            描画先の Axes オブジェクト。None の場合は新規作成する
+        **kwargs
+            matplotlib.axes.Axes.imshow に渡す追加キーワード引数
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            描画に使用した Axes オブジェクト
+        """
+        if ax is None:
+            _, ax = plt.subplots()
+        mask_data = (
+            self.cr_mask.data
+            if self.cr_mask is not None
+            else np.zeros(self.shape, dtype=bool)
+        )
+        ax.imshow(mask_data, cmap="gray", **kwargs)
+        ax.set_title(f"{self.filename} (LA-Cosmic mask)")
+        return ax
+
     @property
     def shape(self) -> tuple[int, int]:
-        return self.image.shape
+        return self.sci.data.shape  # type: ignore[return-value]
 
     @property
     def filename(self) -> str:
         try:
-            return self.header["ROOTNAME"] # pyright: ignore
+            return self.sci.header["ROOTNAME"]  # pyright: ignore
         except KeyError:
             return "UNKNOWN"
 
-    
+
 @dataclass(frozen=True)
 class ImageCollection:
     """複数の ImageModel をまとめて管理するコレクション.
@@ -431,20 +545,19 @@ class ImageCollection:
         誤差配列のスケール係数（デフォルト: 5）
     """
 
-    images : list[ImageModel]
-    contrast : float = 5.0
-    cr_threshold : float = 5
-    neighbor_threshold : float = 5
-    error : float = 5
-
+    images: list[ImageModel]
+    contrast: float = 5.0
+    cr_threshold: float = 5
+    neighbor_threshold: float = 5
+    error: float = 5
 
     def __repr__(self) -> str:
         return (
             f"ImageCollection({len(self.images)} images, \n"
-            +f"contrast={self.contrast}, \n"
-            +f"cr_threshold={self.cr_threshold}, \n"
-            +f"neighbor_threshold={self.neighbor_threshold}, \n"
-            +f"error={self.error})\n"
+            + f"contrast={self.contrast}, \n"
+            + f"cr_threshold={self.cr_threshold}, \n"
+            + f"neighbor_threshold={self.neighbor_threshold}, \n"
+            + f"error={self.error})\n"
         )
 
     @classmethod
@@ -456,7 +569,7 @@ class ImageCollection:
         cr_threshold: float = 5,
         neighbor_threshold: float = 5,
         error: float = 5,
-        ) -> Self:
+    ) -> Self:
         """ReaderCollection から ImageCollection を生成する.
 
         各 Reader の指定 HDU インデックスからデータとヘッダーを取得して
@@ -483,13 +596,10 @@ class ImageCollection:
         ImageCollection
             生成されたコレクション
         """
-        images = []
-        for reader in readers:
-            image = ImageModel.from_reader(
-                reader,
-                dq_flags=dq_flags,
-            )
-            images.append(image)
+        images = [
+            ImageModel.from_reader(reader, dq_flags=dq_flags)
+            for reader in readers
+        ]
         return cls(
             images=images,
             contrast=contrast,
@@ -498,11 +608,12 @@ class ImageCollection:
             error=error,
         )
 
-    def remove_cosmic_ray(self, **kwargs) -> tuple[Self, Self]:
+    def remove_cosmic_ray(self, **kwargs) -> Self:
         """全画像から LA-Cosmic で宇宙線を一括除去する.
 
         コレクションが保持する LA-Cosmic パラメータを使用して、
         各 ImageModel に対して宇宙線除去を実行する。
+        宇宙線マスクは各 ImageModel の .mask 属性に格納される。
 
         Parameters
         ----------
@@ -512,22 +623,20 @@ class ImageCollection:
         Returns
         -------
         ImageCollection
-            宇宙線除去済み画像を持つ新しいコレクション
+            宇宙線除去済み画像を持つ新しいコレクション。
+            各 ImageModel の .mask に宇宙線マスク（EXTNAME='LACOSMIC'）が格納される
         """
-        images = []
-        masks = []
-        for image in self.images:
-            clean_model, mask_model = (image.remove_cosmic_ray(
+        images = [
+            image.remove_cosmic_ray(
                 contrast=self.contrast,
                 cr_threshold=self.cr_threshold,
                 neighbor_threshold=self.neighbor_threshold,
                 error=self.error,
-                **kwargs))
-            images.append(clean_model)
-            masks.append(mask_model)
-        clean_collection_model = replace(self,images=images)
-        mask_collection_model = replace(self,images=masks)
-        return clean_collection_model, mask_collection_model
+                **kwargs,
+            )
+            for image in self.images
+        ]
+        return replace(self, images=images)
 
     def write_fits(
         self,
@@ -559,27 +668,26 @@ class ImageCollection:
         FileExistsError
             出力ファイルが既に存在し overwrite=False の場合
         """
-        output_paths = []
-        for image in self.images:
-            path = image.write_fits(
+        return [
+            image.write_fits(
                 output_suffix=output_suffix,
                 output_dir=output_dir,
                 overwrite=overwrite,
             )
-            output_paths.append(path)
-        return output_paths
+            for image in self.images
+        ]
 
     def imshow(
         self,
-        ax = None,
+        ax=None,
         vmax=1600,
         vmin=0,
-        area:bool = False,
-        x_center:int = 330,
-        y_center:int = 550,
-        half_width:int = 100,
-        **kwargs
-        ) -> plt.Axes: # pyright: ignore
+        area: bool = False,
+        x_center: int = 330,
+        y_center: int = 550,
+        half_width: int = 100,
+        **kwargs,
+    ) -> plt.Axes:  # pyright: ignore
         """全画像をサブプロットのグリッドで一覧表示する.
 
         2行3列のグリッドに各フレームを並べて表示する。
@@ -610,13 +718,13 @@ class ImageCollection:
             描画に使用した Axes 配列
         """
         if ax is None:
-            _,ax = plt.subplots(2,3,figsize=(10,8))
-        for i,image in enumerate(self.images):
-            ax[i//3,i%3].imshow(image.image,vmax=vmax,vmin=vmin,**kwargs)
-            ax[i//3,i%3].set_title(image.filename)
+            _, ax = plt.subplots(2, 3, figsize=(10, 8))
+        for i, image in enumerate(self.images):
+            ax[i // 3, i % 3].imshow(image.sci.data, vmax=vmax, vmin=vmin, **kwargs)
+            ax[i // 3, i % 3].set_title(image.filename)
             if area:
-                ax[i//3,i%3].set_xlim(x_center-half_width,x_center+half_width)
-                ax[i//3,i%3].set_ylim(y_center-half_width,y_center+half_width)
+                ax[i // 3, i % 3].set_xlim(x_center - half_width, x_center + half_width)
+                ax[i // 3, i % 3].set_ylim(y_center - half_width, y_center + half_width)
         return ax
 
     def imshow_mask(
@@ -626,8 +734,8 @@ class ImageCollection:
         x_center: int = 330,
         y_center: int = 550,
         half_width: int = 100,
-        **kwargs
-        ) -> plt.Axes:  # pyright: ignore
+        **kwargs,
+    ) -> plt.Axes:  # pyright: ignore
         """全画像のマスクをサブプロットのグリッドで一覧表示する.
 
         2行3列のグリッドに各フレームの DQ マスクを並べて表示する。
@@ -656,7 +764,11 @@ class ImageCollection:
         if ax is None:
             _, ax = plt.subplots(2, 3, figsize=(10, 8))
         for i, image in enumerate(self.images):
-            mask_data = image.mask if image.mask is not None else np.zeros(image.shape, dtype=bool)
+            mask_data = (
+                image.dq_mask.data
+                if image.dq_mask is not None
+                else np.zeros(image.shape, dtype=bool)
+            )
             ax[i // 3, i % 3].imshow(mask_data, cmap="gray", **kwargs)
             ax[i // 3, i % 3].set_title(f"{image.filename} (mask)")
             if area:
@@ -666,9 +778,9 @@ class ImageCollection:
 
     def __len__(self) -> int:
         return len(self.images)
-    
+
     def __getitem__(self, index: int) -> ImageModel:
         return self.images[index]
-    
+
     def __iter__(self):
         return iter(self.images)

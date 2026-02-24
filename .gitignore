@@ -1,3 +1,8 @@
+# Implementation Plan
+implementation_plan.md
+implementation_plan.md.resolved
+
+
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
