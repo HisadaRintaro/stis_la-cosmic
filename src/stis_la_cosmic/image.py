@@ -613,7 +613,7 @@ class ImageCollection:
         """全画像から LA-Cosmic で宇宙線を一括除去する.
 
         コレクションが保持する LA-Cosmic パラメータを使用して、
-        各 ImageModel に対して宇宙線除去を実行する。
+        各 ImageModel に対して宇宙する。
         宇宙線マスクは各 ImageModel の .mask 属性に格納される。
 
         Parameters
