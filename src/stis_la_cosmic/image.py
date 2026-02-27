@@ -4,7 +4,7 @@ STIS FITS ファイルから読み込んだ画像データを管理し、
 宇宙線除去 (LA-Cosmic) および可視化機能を提供するモジュール。
 """
 
-from typing import Literal
+from typing import Literal, cast
 import warnings
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -46,6 +46,27 @@ class ImageUnit:
         """
         data = self.data.astype(np.uint8) if self.data.dtype == bool else self.data
         return fits.ImageHDU(data=data, header=self.header)
+
+    @property
+    def wavelength(self) -> np.ndarray | None:
+        """ヘッダーの WCS キーワードから波長配列を生成する.
+
+        CRVAL1（参照ピクセルの波長）と CDELT1 または CD1_1（波長/pixel）
+        から各ピクセルの波長を計算する。必要なキーワードが存在しない場合は
+        None を返す。
+
+        Returns
+        -------
+        np.ndarray | None
+            波長配列 [Å]。WCS 情報が不足している場合は None
+        """
+        crval1 = cast(float | None, self.header.get("CRVAL1"))
+        cdelt1 = cast(float | None, self.header.get("CDELT1", self.header.get("CD1_1")))
+        if crval1 is None or cdelt1 is None:
+            return None
+        crpix1 = cast(float, self.header.get("CRPIX1", 1.0))
+        n_pixels = self.data.shape[1]
+        return crval1 + cdelt1 * (np.arange(n_pixels) - (crpix1 - 1))
 
 
 @dataclass(frozen=True)
@@ -192,6 +213,45 @@ class ImageModel:
                 result[y, x] = np.median(neighbors)
         return result
 
+    def interpolate_bad_pixels(
+        self,
+        mask_negative: bool = True,
+    ) -> tuple[Self, np.ndarray]:
+        """DQ マスクおよび負値ピクセルを中央値補間した ImageModel を返す.
+
+        DQ フラグに基づく bad pixel マスクと、オプションで負の値を持つ
+        ピクセルのマスクを合成し、該当ピクセルを周囲8近傍の中央値で補間する。
+
+        Parameters
+        ----------
+        mask_negative : bool, optional
+            True の場合、負の値を持つピクセルもマスク対象にする（デフォルト: True）
+
+        Returns
+        -------
+        tuple[ImageModel, np.ndarray]
+            (補間済み ImageModel, 合成マスク) のタプル。
+            合成マスクは DQ マスクと負値マスクの OR 結合
+        """
+        dq_mask = (
+            self.dq_mask
+            if self.dq_mask is not None
+            else np.zeros(self.shape, dtype=bool)
+        )
+        neg_mask = (
+            (self.sci.data < 0)
+            if mask_negative
+            else np.zeros(self.shape, dtype=bool)
+        )
+        combined_mask = dq_mask | neg_mask
+
+        if combined_mask.any():
+            interpolated = self.median_interpolate(self.sci.data, combined_mask)
+        else:
+            interpolated = self.sci.data
+
+        return replace(self, sci=replace(self.sci, data=interpolated)), combined_mask
+
     def remove_cosmic_ray(
         self,
         contrast: float = 5.0,
@@ -203,8 +263,8 @@ class ImageModel:
     ) -> Self:
         """LA-Cosmic アルゴリズムにより宇宙線を除去する.
 
-        lacosmic.remove_cosmics を用いて画像データから宇宙線ヒットを
-        検出・除去し、クリーン画像を持つ新しい ImageModel を返す。
+        interpolate_bad_pixels で前処理を行った後、
+        lacosmic.remove_cosmics で宇宙線ヒットを検出・除去する。
         宇宙線マスクは戻り値の .cr_mask 属性に格納される。
 
         Parameters
@@ -228,32 +288,12 @@ class ImageModel:
             宇宙線除去済み画像を持つ新しいインスタンス。
             .cr_mask に宇宙線マスクが格納される
         """
-        # 1. DQ マスクの取得
-        dq_mask = (
-            self.dq_mask
-            if self.dq_mask is not None
-            else np.zeros(self.shape, dtype=bool)
+        preprocessed, combined_mask = self.interpolate_bad_pixels(
+            mask_negative=mask_negative
         )
 
-        # 2. Negative pixel マスクの生成
-        neg_mask = (
-            (self.sci.data < 0)
-            if mask_negative
-            else np.zeros(self.shape, dtype=bool)
-        )
-
-        # 3. 合成マスク
-        combined_mask = dq_mask | neg_mask
-
-        # 4. マスク対象ピクセルを中央値補間
-        if combined_mask.any():
-            interpolated = self.median_interpolate(self.sci.data, combined_mask)
-        else:
-            interpolated = self.sci.data
-
-        # 5. LA Cosmic 実行
         clean_data, cr_mask = remove_cosmics(
-            interpolated,
+            preprocessed.sci.data,
             contrast,
             cr_threshold,
             neighbor_threshold,
@@ -262,7 +302,6 @@ class ImageModel:
             **kwargs,
         )
 
-        # 6. 宇宙線マスク用の ImageUnit を生成（EXTNAME='LACOSMIC'）
         cr_mask_header = fits.Header()
         cr_mask_header["EXTNAME"] = "LACOSMIC"
         cr_mask_unit = ImageUnit(data=cr_mask, header=cr_mask_header)
@@ -433,6 +472,48 @@ class ImageModel:
             hdu_list.append(self.cr_mask.to_hdu())
         fits.HDUList(hdu_list).writeto(output_path, overwrite=overwrite)
         return output_path
+
+    def plot_spectrum(
+        self,
+        slit_index: int,
+        ax=None,
+        **kwargs,
+    ) -> plt.Axes:  # pyright: ignore
+        """指定スリット位置での波長方向スペクトルをプロットする.
+
+        sci の data から slit_index 行を取り出し、横軸を波長（またはピクセル）、
+        縦軸をカウントとしてプロットする。
+
+        Parameters
+        ----------
+        slit_index : int
+            スリット方向（y 軸）のインデックス
+        ax : matplotlib.axes.Axes, optional
+            描画先の Axes オブジェクト。None の場合は新規作成する
+        **kwargs
+            matplotlib.axes.Axes.plot に渡す追加キーワード引数
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            描画に使用した Axes オブジェクト
+        """
+        if ax is None:
+            _, ax = plt.subplots()
+
+        spectrum = self.sci.data[slit_index, :]
+        wavelength = self.sci.wavelength
+
+        if wavelength is not None:
+            ax.plot(wavelength, spectrum, **kwargs)
+            ax.set_xlabel("Wavelength [Å]")
+        else:
+            ax.plot(spectrum, **kwargs)
+            ax.set_xlabel("Pixel")
+
+        ax.set_ylabel("Counts")
+        ax.set_title(f"{self.filename} (slit index = {slit_index})")
+        return ax
 
     def imshow(self, ax=None, **kwargs) -> plt.Axes:  # pyright: ignore
         """画像データを matplotlib で表示する.
