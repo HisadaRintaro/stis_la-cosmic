@@ -1010,7 +1010,14 @@ class ImageCollection:
             ax_image.set_xlim(x_center - half_width, x_center + half_width)
             ax_image.set_ylim(y_center - half_width, y_center + half_width)
 
-        fig.tight_layout()
+        param_text = (
+            f"contrast={self.contrast}  "
+            f"cr_threshold={self.cr_threshold}  "
+            f"neighbor_threshold={self.neighbor_threshold}  "
+            f"error={self.error}"
+        )
+        fig.text(0.5, 0.01, param_text, ha="center", va="bottom", fontsize=8)
+        fig.tight_layout(rect=(0.0, 0.05, 1.0, 0.93))
 
         if save_path:
             # save_fig は np.ndarray を期待するので spec_axes を渡す
