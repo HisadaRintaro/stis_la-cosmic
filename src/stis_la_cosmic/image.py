@@ -14,7 +14,7 @@ from .fits_reader import ReaderCollection, STISFitsReader
 from astropy.io import fits
 import matplotlib.pyplot as plt
 from lacosmic import remove_cosmics
-
+from scipy.ndimage import median_filter
 
 @dataclass(frozen=True)
 class ImageUnit:
@@ -86,12 +86,14 @@ class ImageModel:
         誤差（ERR, HDU 2）の data / header ペア。None の場合は存在しない
     dq : ImageUnit | None
         DQ（HDU 3）の data / header ペア。None の場合は存在しない
-    mask : ImageUnit | None
-        bad pixel マスク（True = bad pixel）。LA-Cosmic 後 HDU に追加される
+    cr_mask : ImageUnit | None
+        宇宙線マスク。LA-Cosmic 後 HDU に追加される
     source_path : Path | None
         元の FITS ファイルが格納されているディレクトリパス
     dq_flags : int
         マスク対象の DQ ビットフラグ（デフォルト: 16 = hot pixel）
+    dq_mask : np.ndarray | None
+        DQ ビットフラグに基づいて生成された bad pixel マスク（True = bad pixel）。補完後とLA-Cosmic 後 HDU に追加される
     """
 
     primary_header: fits.Header
@@ -119,10 +121,10 @@ class ImageModel:
             f"  sci={self.sci.data.shape},\n"
             f"  err={self.err is not None},\n"
             f"  dq={self.dq is not None},\n"
-            f"  {dq_mask_info},\n"
             f"  {cr_mask_info},\n"
             f"  source_path={self.source_path}\n"
             f"  dq_flags={self.dq_flags}\n"
+            f"  {dq_mask_info},\n"
             f")"
         )
 
@@ -198,25 +200,14 @@ class ImageModel:
             補間済みの画像データ配列（コピー）
         """
         result = image.copy()
-        bad_y, bad_x = np.where(mask)
-        ny, nx = image.shape
-        for y, x in zip(bad_y, bad_x):
-            neighbors = []
-            for dy in (-1, 0, 1):
-                for dx in (-1, 0, 1):
-                    if dy == 0 and dx == 0:
-                        continue
-                    ny_, nx_ = y + dy, x + dx
-                    if 0 <= ny_ < ny and 0 <= nx_ < nx and not mask[ny_, nx_]:
-                        neighbors.append(image[ny_, nx_])
-            if neighbors:
-                result[y, x] = np.median(neighbors)
+        median = median_filter(image, size=3)
+        result[mask] = median[mask]
         return result
 
     def interpolate_bad_pixels(
         self,
         mask_negative: bool = True,
-    ) -> tuple[Self, np.ndarray]:
+    ) -> Self:
         """DQ マスクおよび負値ピクセルを中央値補間した ImageModel を返す.
 
         DQ フラグに基づく bad pixel マスクと、オプションで負の値を持つ
@@ -229,9 +220,8 @@ class ImageModel:
 
         Returns
         -------
-        tuple[ImageModel, np.ndarray]
-            (補間済み ImageModel, 合成マスク) のタプル。
-            合成マスクは DQ マスクと負値マスクの OR 結合
+        ImageModel
+            補間済み ImageModel
         """
         dq_mask = (
             self.dq_mask
@@ -250,7 +240,11 @@ class ImageModel:
         else:
             interpolated = self.sci.data
 
-        return replace(self, sci=replace(self.sci, data=interpolated)), combined_mask
+        return replace(
+            self,
+            sci=replace(self.sci, data=interpolated),
+            dq_mask=combined_mask,
+        )
 
     def remove_cosmic_ray(
         self,
@@ -288,7 +282,7 @@ class ImageModel:
             宇宙線除去済み画像を持つ新しいインスタンス。
             .cr_mask に宇宙線マスクが格納される
         """
-        preprocessed, combined_mask = self.interpolate_bad_pixels(
+        preprocessed= self.interpolate_bad_pixels(
             mask_negative=mask_negative
         )
 
@@ -298,7 +292,7 @@ class ImageModel:
             cr_threshold,
             neighbor_threshold,
             error=error * np.ones(self.shape) if error is not None else None,
-            mask=combined_mask,
+            mask=preprocessed.dq_mask,
             **kwargs,
         )
 
@@ -689,12 +683,36 @@ class ImageCollection:
             neighbor_threshold=neighbor_threshold,
             error=error,
         )
+    def interpolate_bad_pixels(self, **kwargs) -> Self:
+        """全画像から data quality ビットフラグに基づいてhot pixelとnegative pixelを補間する。 
+
+        各 ImageModelに対してlacosmic.interpolate_bad_pixelsを呼び出し、補間後の画像を生成する。
+        bad_pixelsのマスクは各 ImageModel の .mask 属性に格納される。
+
+        Parameters
+        ----------
+        **kwargs
+            lacosmic.interpolate_bad_pixels に渡す追加キーワード引数
+
+        Returns
+        -------
+        ImageCollection
+            補間済み画像を持つ新しいコレクション。
+            各 ImageModel の .mask に補間マスク（EXTNAME='BADPIXEL'）が格納される
+        """
+        images = [
+            image.interpolate_bad_pixels(
+                **kwargs,
+            )
+            for image in self.images
+        ]
+        return replace(self, images=images)
 
     def remove_cosmic_ray(self, **kwargs) -> Self:
         """全画像から LA-Cosmic で宇宙線を一括除去する.
 
         コレクションが保持する LA-Cosmic パラメータを使用して、
-        各 ImageModel に対して宇宙する。
+        各 ImageModel に対して宇宙線の除去を行い、
         宇宙線マスクは各 ImageModel の .mask 属性に格納される。
 
         Parameters
@@ -895,6 +913,110 @@ class ImageCollection:
             self.save_fig(ax, save_path, title)
             
         return ax
+
+    def plot_spectrum_comparison(
+        self,
+        other: "ImageCollection",
+        slit_index: int,
+        labels: tuple[str, str] = ("before CR removal", "after CR removal"),
+        image_source: Literal["self", "other"] = "other",
+        area: bool = False,
+        x_center: int = 330,
+        y_center: int = 550,
+        half_width: int = 100,
+        imshow_kwargs: dict | None = None,
+        save_path: Path | str | None = None,
+        title: str | None = None,
+        **kwargs,
+    ) -> np.ndarray:
+        """2つのコレクション間でスペクトルを比較プロットする.
+
+        各フレームについて、self と other のスペクトルを同一 Axes 上に
+        重ねてプロットし、左側2行3列のグリッドで一覧表示する。
+        右側パネルにはイメージデータとスライス位置を水平線で表示する。
+
+        Parameters
+        ----------
+        other : ImageCollection
+            比較対象のコレクション（例: 宇宙線除去後）
+        slit_index : int
+            スリット方向（y 軸）のインデックス
+        labels : tuple[str, str], optional
+            凡例ラベル（self, other の順）。
+            デフォルト: ("before CR removal", "after CR removal")
+        image_source : {"self", "other"}, optional
+            右側パネルに表示する画像の選択。
+            "self" の場合は処理前、"other" の場合は処理後の画像を表示する
+            （デフォルト: "other"）
+        imshow_kwargs : dict, optional
+            右側パネルの ImageModel.imshow に渡すキーワード引数
+            （例: {"vmin": 0, "vmax": 1600}）
+        save_path : Path | str | None, optional
+            保存先のファイルパス（指定された場合、描画後に保存して Figure を閉じる）
+        title : str | None, optional
+            Figure 全体のタイトル
+        **kwargs
+            matplotlib.axes.Axes.plot に渡す追加キーワード引数（スペクトル用）
+
+        Returns
+        -------
+        np.ndarray of matplotlib.axes.Axes
+            描画に使用した Axes 配列（スペクトル用 2×3 + 画像パネル）
+
+        Raises
+        ------
+        ValueError
+            2つのコレクションの画像数が一致しない場合
+        """
+        if len(self) != len(other):
+            raise ValueError(
+                f"画像数が一致しません: self={len(self)}, other={len(other)}"
+            )
+
+        fig = plt.figure(figsize=(16, 8))
+        gs = fig.add_gridspec(2, 4, width_ratios=[1, 1, 1, 1])
+
+        # 左側: 2×3 のスペクトル比較プロット
+        spec_axes = np.empty((2, 3), dtype=object)
+        for row in range(2):
+            for col in range(3):
+                spec_axes[row, col] = fig.add_subplot(gs[row, col])
+
+        for ax, img_self, img_other in zip(
+            spec_axes.flat, self.images, other.images
+        ):
+            img_self.plot_spectrum(slit_index, ax=ax, label=labels[0], **kwargs)
+            img_other.plot_spectrum(slit_index, ax=ax, label=labels[1], **kwargs)
+            ax.legend(fontsize="small")
+
+        # 未使用の Axes を非表示にする
+        for ax in spec_axes.flat[len(self.images) :]:
+            ax.set_visible(False)
+
+        # 右側: イメージデータ + スライス位置表示
+        ax_image = fig.add_subplot(gs[:, 3])
+        source = other if image_source == "other" else self
+        display_image = source.images[0]
+        display_image.imshow(ax=ax_image, **(imshow_kwargs or {}))
+        ax_image.axhline(
+            y=slit_index, color="red", linestyle="--", linewidth=1.5,
+            label=f"slit index = {slit_index}",
+        )
+        ax_image.legend(fontsize="small", loc="upper right")
+        ax_image.set_title(f"{display_image.filename}")
+        ax_image.set_xlabel("Pixel (dispersion)")
+        ax_image.set_ylabel("Pixel (spatial)")
+        if area:
+            ax_image.set_xlim(x_center - half_width, x_center + half_width)
+            ax_image.set_ylim(y_center - half_width, y_center + half_width)
+
+        fig.tight_layout()
+
+        if save_path:
+            # save_fig は np.ndarray を期待するので spec_axes を渡す
+            self.save_fig(spec_axes, save_path, title)
+
+        return spec_axes
 
     def __len__(self) -> int:
         return len(self.images)

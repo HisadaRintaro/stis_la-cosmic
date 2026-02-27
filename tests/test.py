@@ -15,7 +15,7 @@ save_dir.mkdir(parents=True, exist_ok=True)
 output_dir = Path("remove_cosmic_ray_result/")
 
 # before remove cosmic ray image saving
-image_collection = ImageCollection.from_readers(reader_collection)
+image_collection = ImageCollection.from_readers(reader_collection,dq_flags=4)
 fig, ax = plt.subplots(2,3,figsize=(10,8))
 image_collection.imshow(area=True, ax=ax)
 fig.suptitle(f"before remove cosmic ray")
